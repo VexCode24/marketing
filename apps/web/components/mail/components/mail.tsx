@@ -38,7 +38,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
   configAtom,
   openComposeAtom,
@@ -125,6 +125,10 @@ export function Mail({
   const [isCollapsed, setIsCollapsed] = React.useState(defaultCollapsed);
   const [file, setFile] = React.useState<File | undefined>();
   const [isUploading, setIsUploading] = React.useState(false);
+  const [workspaceName, setWorkspaceName] = React.useState("");
+  const [workspaceError, setWorkspaceError] = React.useState<string | null>(
+    null,
+  );
   const [selectedTab, setSelectedTab] = useAtom(tabAtom);
   const [composeOpen, setComposeOpen] = useAtom(openComposeAtom);
   const [stateThreadsData, setStateThreadsData] = useAtom(threadsAtom);
@@ -133,6 +137,7 @@ export function Mail({
   );
 
   const { edgestore } = useEdgeStore();
+  const { mutate } = useSWRConfig();
 
   const mail = useAtomValue(configAtom);
 
@@ -246,7 +251,7 @@ export function Mail({
         <WorkspaceSidebar />
         <Dialog
           open={createWorkspaceOpen}
-          onOpenChange={() => setCreateWorkspaceOpen(!createWorkspaceOpen)}
+          onOpenChange={setCreateWorkspaceOpen}
         >
           <DialogContent className="sm:max-w-[625px]">
             <DialogHeader>
@@ -267,12 +272,21 @@ export function Mail({
               </div>
               <div className="flex flex-col space-y-2">
                 <Label>Name</Label>
-                <Input type="text" name="name" />
+                <Input
+                  type="text"
+                  name="name"
+                  value={workspaceName}
+                  onChange={(event) => {
+                    setWorkspaceName(event.target.value);
+                    setWorkspaceError(null);
+                  }}
+                />
               </div>
-              <div className="flex flex-col space-y-2">
-                <Label>Description</Label>
-                <Input type="text" name="description" />
-              </div>
+              {workspaceError ? (
+                <DialogDescription className="text-sm text-red-500">
+                  {workspaceError}
+                </DialogDescription>
+              ) : null}
             </div>
             <DialogFooter>
               <div className="flex space-x-2">
@@ -284,8 +298,17 @@ export function Mail({
                 </Button>
                 <Button
                   onClick={async () => {
+                    const name = workspaceName.trim();
+                    if (!name) {
+                      setWorkspaceError("Workspace name is required.");
+                      return;
+                    }
+
+                    setWorkspaceError(null);
+                    setIsUploading(true);
+                    let image: string | undefined;
+
                     if (file) {
-                      setIsUploading(true);
                       const res = await edgestore.publicFiles.upload({
                         file,
                         onProgressChange: (progress) => {
@@ -293,14 +316,28 @@ export function Mail({
                           console.log(progress);
                         },
                       });
-                      // you can run some server action or api here
-                      // to add the necessary data to your database
-                      console.log(res);
+                      image = res.url;
                     }
 
+                    const response = await fetch("/api/workspaces", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name, image }),
+                    });
+
+                    if (!response.ok) {
+                      setWorkspaceError("Could not create workspace.");
+                      setIsUploading(false);
+                      return;
+                    }
+
+                    await mutate("/api/workspaces");
+                    setWorkspaceName("");
+                    setFile(undefined);
                     setIsUploading(false);
                     setCreateWorkspaceOpen(false);
                   }}
+                  disabled={isUploading}
                 >
                   {isUploading ? (
                     <>

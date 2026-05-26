@@ -6,6 +6,15 @@ import { z } from "zod";
 const createWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(80),
   image: z.string().url().optional().nullable(),
+  emailAccounts: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(80),
+        email: z.string().trim().email().max(255),
+      }),
+    )
+    .max(10)
+    .optional(),
 });
 
 export async function GET() {
@@ -64,6 +73,14 @@ export async function POST(request: Request) {
     data: {
       name: parsed.data.name,
       image: parsed.data.image || null,
+      emailAccounts: parsed.data.emailAccounts?.length
+        ? {
+            create: parsed.data.emailAccounts.map((emailAccount) => ({
+              name: emailAccount.name,
+              email: emailAccount.email,
+            })),
+          }
+        : undefined,
       membership: {
         create: {
           role: "OWNER",

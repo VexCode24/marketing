@@ -76,12 +76,27 @@ interface MailProps {
   navCollapsedSize: number;
 }
 
+interface WorkspaceResponse {
+  workspaces: {
+    id: string;
+    name: string;
+    emailAccounts: {
+      id: string;
+      name: string;
+      email: string;
+    }[];
+  }[];
+}
+
 export function Mail({
   accounts,
   defaultLayout = [225, 440, 655],
   defaultCollapsed = false,
   navCollapsedSize,
 }: MailProps) {
+  const { data: workspacesData } =
+    useSWR<WorkspaceResponse>("/api/workspaces");
+
   const {
     data: threadsData,
     error: threadsError,
@@ -126,6 +141,8 @@ export function Mail({
   const [file, setFile] = React.useState<File | undefined>();
   const [isUploading, setIsUploading] = React.useState(false);
   const [workspaceName, setWorkspaceName] = React.useState("");
+  const [emailAccountName, setEmailAccountName] = React.useState("");
+  const [emailAccountEmail, setEmailAccountEmail] = React.useState("");
   const [workspaceError, setWorkspaceError] = React.useState<string | null>(
     null,
   );
@@ -140,6 +157,18 @@ export function Mail({
   const { mutate } = useSWRConfig();
 
   const mail = useAtomValue(configAtom);
+
+  const workspaceAccounts =
+    workspacesData?.workspaces.flatMap((workspace) =>
+      workspace.emailAccounts.map((emailAccount) => ({
+        label: emailAccount.name || workspace.name,
+        email: emailAccount.email,
+        icon: <MessagesSquare className="h-4 w-4" />,
+      })),
+    ) ?? [];
+  const visibleAccounts = workspaceAccounts.length
+    ? workspaceAccounts
+    : accounts;
 
   React.useEffect(() => {
     if (threadsData) {
@@ -282,6 +311,34 @@ export function Mail({
                   }}
                 />
               </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex flex-col space-y-2">
+                  <Label>Email account name</Label>
+                  <Input
+                    type="text"
+                    name="emailAccountName"
+                    placeholder="Shared inbox"
+                    value={emailAccountName}
+                    onChange={(event) => {
+                      setEmailAccountName(event.target.value);
+                      setWorkspaceError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label>Email account address</Label>
+                  <Input
+                    type="email"
+                    name="emailAccountEmail"
+                    placeholder="team@example.com"
+                    value={emailAccountEmail}
+                    onChange={(event) => {
+                      setEmailAccountEmail(event.target.value);
+                      setWorkspaceError(null);
+                    }}
+                  />
+                </div>
+              </div>
               {workspaceError ? (
                 <DialogDescription className="text-sm text-red-500">
                   {workspaceError}
@@ -304,6 +361,20 @@ export function Mail({
                       return;
                     }
 
+                    const accountName = emailAccountName.trim();
+                    const accountEmail = emailAccountEmail.trim();
+                    if (accountName && !accountEmail) {
+                      setWorkspaceError("Email account address is required.");
+                      return;
+                    }
+                    if (
+                      accountEmail &&
+                      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)
+                    ) {
+                      setWorkspaceError("Enter a valid email account address.");
+                      return;
+                    }
+
                     setWorkspaceError(null);
                     setIsUploading(true);
                     let image: string | undefined;
@@ -322,7 +393,18 @@ export function Mail({
                     const response = await fetch("/api/workspaces", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ name, image }),
+                      body: JSON.stringify({
+                        name,
+                        image,
+                        emailAccounts: accountEmail
+                          ? [
+                              {
+                                name: accountName || accountEmail,
+                                email: accountEmail,
+                              },
+                            ]
+                          : undefined,
+                      }),
                     });
 
                     if (!response.ok) {
@@ -333,6 +415,8 @@ export function Mail({
 
                     await mutate("/api/workspaces");
                     setWorkspaceName("");
+                    setEmailAccountName("");
+                    setEmailAccountEmail("");
                     setFile(undefined);
                     setIsUploading(false);
                     setCreateWorkspaceOpen(false);
@@ -370,7 +454,10 @@ export function Mail({
               isCollapsed ? "h-[52px] flex-col" : "px-2",
             )}
           >
-            <AccountSwitcher isCollapsed={isCollapsed} accounts={accounts} />
+            <AccountSwitcher
+              isCollapsed={isCollapsed}
+              accounts={visibleAccounts}
+            />
           </div>
           <Separator />
           <div className="flex h-[calc(100vh-52px)] flex-col justify-between">

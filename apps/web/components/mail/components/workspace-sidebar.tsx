@@ -19,7 +19,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { openCreateWorkspaceOpenAtom } from "@/utils/store";
 import { useSetAtom } from "jotai";
-import { Building2, Loader2, Mail, Plus, Save, Trash2 } from "lucide-react";
+import {
+  Building2,
+  Loader2,
+  Mail,
+  Plus,
+  Save,
+  Trash2,
+  UserPlus,
+} from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import * as React from "react";
 import useSWR from "swr";
@@ -30,11 +38,25 @@ type EmailAccount = {
   email: string;
 };
 
+type WorkspaceMember = {
+  id: string;
+  role: "OWNER" | "ADMIN" | "USER";
+  invitedName: string | null;
+  invitedEmail: string | null;
+  user: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    image: string | null;
+  } | null;
+};
+
 type Workspace = {
   id: string;
   name: string;
   image: string | null;
   role: "OWNER" | "ADMIN" | "USER";
+  members: WorkspaceMember[];
   emailAccounts: EmailAccount[];
 };
 
@@ -45,6 +67,12 @@ type WorkspacesResponse = {
 type EmailAccountDraft = {
   name: string;
   email: string;
+};
+
+type MemberDraft = {
+  name: string;
+  email: string;
+  role: "ADMIN" | "USER";
 };
 
 const userNavigation = [
@@ -76,6 +104,16 @@ export function WorkspaceSidebar() {
   >(null);
   const [isSavingEmailAccount, setIsSavingEmailAccount] =
     React.useState(false);
+  const [memberDraft, setMemberDraft] = React.useState<MemberDraft>({
+    name: "",
+    email: "",
+    role: "USER",
+  });
+  const [editingMembers, setEditingMembers] = React.useState<
+    Record<string, { role: "ADMIN" | "USER" }>
+  >({});
+  const [memberError, setMemberError] = React.useState<string | null>(null);
+  const [isSavingMember, setIsSavingMember] = React.useState(false);
   const managingWorkspace =
     workspaces.find((workspace) => workspace.id === managingWorkspaceId) ??
     null;
@@ -96,8 +134,20 @@ export function WorkspaceSidebar() {
         ]),
       ),
     );
+    setEditingMembers(
+      Object.fromEntries(
+        managingWorkspace.members.map((member) => [
+          member.id,
+          {
+            role: member.role === "OWNER" ? "USER" : member.role,
+          },
+        ]),
+      ),
+    );
     setEmailAccountDraft({ name: "", email: "" });
+    setMemberDraft({ name: "", email: "", role: "USER" });
     setEmailAccountError(null);
+    setMemberError(null);
   }, [managingWorkspace]);
 
   const addEmailAccount = async () => {
@@ -143,6 +193,105 @@ export function WorkspaceSidebar() {
     }
 
     setEmailAccountDraft({ name: "", email: "" });
+    await mutate();
+  };
+
+  const addMember = async () => {
+    if (!managingWorkspace) {
+      return;
+    }
+
+    const name = memberDraft.name.trim();
+    const email = memberDraft.email.trim();
+    if (!email) {
+      setMemberError("Invite email address is required.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setMemberError("Enter a valid invite email address.");
+      return;
+    }
+    if (
+      managingWorkspace.members.some(
+        (member) =>
+          getMemberEmail(member)?.toLowerCase() === email.toLowerCase(),
+      )
+    ) {
+      setMemberError("Member already belongs to this workspace.");
+      return;
+    }
+
+    setIsSavingMember(true);
+    setMemberError(null);
+    const response = await fetch(
+      `/api/workspaces/${managingWorkspace.id}/members`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name || undefined,
+          email,
+          role: memberDraft.role,
+        }),
+      },
+    );
+    setIsSavingMember(false);
+
+    if (!response.ok) {
+      setMemberError("Could not invite member.");
+      return;
+    }
+
+    setMemberDraft({ name: "", email: "", role: "USER" });
+    await mutate();
+  };
+
+  const updateMemberRole = async (member: WorkspaceMember) => {
+    if (!managingWorkspace || member.role === "OWNER") {
+      return;
+    }
+
+    const draft = editingMembers[member.id] ?? {
+      role: member.role === "OWNER" ? "USER" : member.role,
+    };
+    setIsSavingMember(true);
+    setMemberError(null);
+    const response = await fetch(
+      `/api/workspaces/${managingWorkspace.id}/members/${member.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: draft.role }),
+      },
+    );
+    setIsSavingMember(false);
+
+    if (!response.ok) {
+      setMemberError("Could not update member role.");
+      return;
+    }
+
+    await mutate();
+  };
+
+  const deleteMember = async (member: WorkspaceMember) => {
+    if (!managingWorkspace || member.role === "OWNER") {
+      return;
+    }
+
+    setIsSavingMember(true);
+    setMemberError(null);
+    const response = await fetch(
+      `/api/workspaces/${managingWorkspace.id}/members/${member.id}`,
+      { method: "DELETE" },
+    );
+    setIsSavingMember(false);
+
+    if (!response.ok) {
+      setMemberError("Could not remove member.");
+      return;
+    }
+
     await mutate();
   };
 
@@ -225,7 +374,7 @@ export function WorkspaceSidebar() {
               </Button>
             ) : workspaces.length > 0 ? (
               workspaces.map((workspace) => {
-                const canManageEmailAccounts =
+                const canManageWorkspace =
                   workspace.role === "OWNER" || workspace.role === "ADMIN";
 
                 return (
@@ -250,16 +399,16 @@ export function WorkspaceSidebar() {
                     >
                       <DropdownMenuLabel>{workspace.name}</DropdownMenuLabel>
                       <DropdownMenuItem
-                        disabled={!canManageEmailAccounts}
+                        disabled={!canManageWorkspace}
                         onSelect={(event) => {
                           event.preventDefault();
-                          if (canManageEmailAccounts) {
+                          if (canManageWorkspace) {
                             setManagingWorkspaceId(workspace.id);
                           }
                         }}
                       >
-                        <Mail className="mr-2 h-4 w-4" />
-                        Manage email accounts
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Manage workspace
                       </DropdownMenuItem>
                       {workspace.emailAccounts.length ? (
                         <>
@@ -331,144 +480,302 @@ export function WorkspaceSidebar() {
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>{managingWorkspace?.name} email accounts</DialogTitle>
+            <DialogTitle>{managingWorkspace?.name} workspace</DialogTitle>
             <DialogDescription>
-              Add Gmail or Google Workspace accounts that belong to this
-              workspace.
+              Manage team members and connected Gmail or Google Workspace
+              accounts.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {managingWorkspace?.emailAccounts.length ? (
-              <div className="space-y-3">
-                {managingWorkspace.emailAccounts.map((emailAccount) => {
-                  const draft = editingEmailAccounts[emailAccount.id] ?? {
-                    name: emailAccount.name,
-                    email: emailAccount.email,
-                  };
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <UserPlus className="h-4 w-4" />
+                <DialogDescription>Team members</DialogDescription>
+              </div>
+              {managingWorkspace?.members.length ? (
+                <div className="space-y-3">
+                  {managingWorkspace.members.map((member) => {
+                    const draft = editingMembers[member.id] ?? {
+                      role: member.role === "OWNER" ? "USER" : member.role,
+                    };
+                    const canEditMember =
+                      managingWorkspace.role === "OWNER" &&
+                      member.role !== "OWNER";
 
-                  return (
-                    <div
-                      key={emailAccount.id}
-                      className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto_auto]"
-                    >
-                      <div className="flex flex-col space-y-2">
-                        <Label>Name</Label>
-                        <Input
-                          value={draft.name}
-                          onChange={(event) => {
-                            setEditingEmailAccounts((drafts) => ({
-                              ...drafts,
-                              [emailAccount.id]: {
-                                ...draft,
-                                name: event.target.value,
-                              },
-                            }));
-                            setEmailAccountError(null);
-                          }}
-                        />
+                    return (
+                      <div
+                        key={member.id}
+                        className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_120px_auto_auto]"
+                      >
+                        <div className="flex flex-col space-y-2">
+                          <Label>Name</Label>
+                          <Input value={getMemberName(member)} disabled />
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <Label>Email</Label>
+                          <Input value={getMemberEmail(member) ?? ""} disabled />
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <Label>Role</Label>
+                          <select
+                            className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                            value={member.role === "OWNER" ? "OWNER" : draft.role}
+                            disabled={!canEditMember || isSavingMember}
+                            onChange={(event) => {
+                              setEditingMembers((drafts) => ({
+                                ...drafts,
+                                [member.id]: {
+                                  role: event.target.value as "ADMIN" | "USER",
+                                },
+                              }));
+                              setMemberError(null);
+                            }}
+                          >
+                            {member.role === "OWNER" ? (
+                              <option value="OWNER">Owner</option>
+                            ) : null}
+                            <option value="USER">User</option>
+                            <option value="ADMIN">Admin</option>
+                          </select>
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            disabled={!canEditMember || isSavingMember}
+                            onClick={() => updateMemberRole(member)}
+                          >
+                            <Save className="h-4 w-4" />
+                            <span className="sr-only">Save member role</span>
+                          </Button>
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            disabled={!canEditMember || isSavingMember}
+                            onClick={() => deleteMember(member)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Remove member</span>
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex flex-col space-y-2">
-                        <Label>Email</Label>
-                        <Input
-                          type="email"
-                          value={draft.email}
-                          onChange={(event) => {
-                            setEditingEmailAccounts((drafts) => ({
-                              ...drafts,
-                              [emailAccount.id]: {
-                                ...draft,
-                                email: event.target.value,
-                              },
-                            }));
-                            setEmailAccountError(null);
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-end">
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          disabled={isSavingEmailAccount}
-                          onClick={() => updateEmailAccount(emailAccount)}
-                        >
-                          <Save className="h-4 w-4" />
-                          <span className="sr-only">Save email account</span>
-                        </Button>
-                      </div>
-                      <div className="flex items-end">
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          disabled={isSavingEmailAccount}
-                          onClick={() => deleteEmailAccount(emailAccount)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Remove email account</span>
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              ) : null}
+              <div className="grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-[1fr_1fr_120px_auto]">
+                <div className="flex flex-col space-y-2">
+                  <Label>Invite name</Label>
+                  <Input
+                    placeholder="Alex Morgan"
+                    value={memberDraft.name}
+                    onChange={(event) => {
+                      setMemberDraft((draft) => ({
+                        ...draft,
+                        name: event.target.value,
+                      }));
+                      setMemberError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label>Invite email</Label>
+                  <Input
+                    type="email"
+                    placeholder="alex@example.com"
+                    value={memberDraft.email}
+                    onChange={(event) => {
+                      setMemberDraft((draft) => ({
+                        ...draft,
+                        email: event.target.value,
+                      }));
+                      setMemberError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label>Role</Label>
+                  <select
+                    className="h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                    value={memberDraft.role}
+                    onChange={(event) => {
+                      setMemberDraft((draft) => ({
+                        ...draft,
+                        role: event.target.value as "ADMIN" | "USER",
+                      }));
+                      setMemberError(null);
+                    }}
+                  >
+                    <option value="USER">User</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    variant="secondary"
+                    disabled={isSavingMember}
+                    onClick={addMember}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Invite
+                  </Button>
+                </div>
               </div>
-            ) : (
-              <DialogDescription>
-                This workspace does not have email accounts yet.
-              </DialogDescription>
-            )}
-            <div className="grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-[1fr_1fr_auto]">
-              <div className="flex flex-col space-y-2">
-                <Label>New account name</Label>
-                <Input
-                  placeholder="Support inbox"
-                  value={emailAccountDraft.name}
-                  onChange={(event) => {
-                    setEmailAccountDraft((draft) => ({
-                      ...draft,
-                      name: event.target.value,
-                    }));
-                    setEmailAccountError(null);
-                  }}
-                />
-              </div>
-              <div className="flex flex-col space-y-2">
-                <Label>New account email</Label>
-                <Input
-                  type="email"
-                  placeholder="support@example.com"
-                  value={emailAccountDraft.email}
-                  onChange={(event) => {
-                    setEmailAccountDraft((draft) => ({
-                      ...draft,
-                      email: event.target.value,
-                    }));
-                    setEmailAccountError(null);
-                  }}
-                />
-              </div>
-              <div className="flex items-end">
-                <Button
-                  variant="secondary"
-                  disabled={
-                    isSavingEmailAccount ||
-                    (managingWorkspace?.emailAccounts.length ?? 0) >= 10
-                  }
-                  onClick={addEmailAccount}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add
-                </Button>
-              </div>
+              {memberError ? (
+                <DialogDescription className="text-red-500">
+                  {memberError}
+                </DialogDescription>
+              ) : null}
             </div>
-            {emailAccountError ? (
-              <DialogDescription className="text-red-500">
-                {emailAccountError}
-              </DialogDescription>
-            ) : null}
+            <div className="space-y-3 border-t pt-4">
+              <div className="flex items-center space-x-2">
+                <Mail className="h-4 w-4" />
+                <DialogDescription>Email accounts</DialogDescription>
+              </div>
+              {managingWorkspace?.emailAccounts.length ? (
+                <div className="space-y-3">
+                  {managingWorkspace.emailAccounts.map((emailAccount) => {
+                    const draft = editingEmailAccounts[emailAccount.id] ?? {
+                      name: emailAccount.name,
+                      email: emailAccount.email,
+                    };
+
+                    return (
+                      <div
+                        key={emailAccount.id}
+                        className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto_auto]"
+                      >
+                        <div className="flex flex-col space-y-2">
+                          <Label>Name</Label>
+                          <Input
+                            value={draft.name}
+                            onChange={(event) => {
+                              setEditingEmailAccounts((drafts) => ({
+                                ...drafts,
+                                [emailAccount.id]: {
+                                  ...draft,
+                                  name: event.target.value,
+                                },
+                              }));
+                              setEmailAccountError(null);
+                            }}
+                          />
+                        </div>
+                        <div className="flex flex-col space-y-2">
+                          <Label>Email</Label>
+                          <Input
+                            type="email"
+                            value={draft.email}
+                            onChange={(event) => {
+                              setEditingEmailAccounts((drafts) => ({
+                                ...drafts,
+                                [emailAccount.id]: {
+                                  ...draft,
+                                  email: event.target.value,
+                                },
+                              }));
+                              setEmailAccountError(null);
+                            }}
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            disabled={isSavingEmailAccount}
+                            onClick={() => updateEmailAccount(emailAccount)}
+                          >
+                            <Save className="h-4 w-4" />
+                            <span className="sr-only">Save email account</span>
+                          </Button>
+                        </div>
+                        <div className="flex items-end">
+                          <Button
+                            size="icon"
+                            variant="secondary"
+                            disabled={isSavingEmailAccount}
+                            onClick={() => deleteEmailAccount(emailAccount)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">
+                              Remove email account
+                            </span>
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <DialogDescription>
+                  This workspace does not have email accounts yet.
+                </DialogDescription>
+              )}
+              <div className="grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-[1fr_1fr_auto]">
+                <div className="flex flex-col space-y-2">
+                  <Label>New account name</Label>
+                  <Input
+                    placeholder="Support inbox"
+                    value={emailAccountDraft.name}
+                    onChange={(event) => {
+                      setEmailAccountDraft((draft) => ({
+                        ...draft,
+                        name: event.target.value,
+                      }));
+                      setEmailAccountError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label>New account email</Label>
+                  <Input
+                    type="email"
+                    placeholder="support@example.com"
+                    value={emailAccountDraft.email}
+                    onChange={(event) => {
+                      setEmailAccountDraft((draft) => ({
+                        ...draft,
+                        email: event.target.value,
+                      }));
+                      setEmailAccountError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    variant="secondary"
+                    disabled={
+                      isSavingEmailAccount ||
+                      (managingWorkspace?.emailAccounts.length ?? 0) >= 10
+                    }
+                    onClick={addEmailAccount}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add
+                  </Button>
+                </div>
+              </div>
+              {emailAccountError ? (
+                <DialogDescription className="text-red-500">
+                  {emailAccountError}
+                </DialogDescription>
+              ) : null}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
     </>
   );
+}
+
+function getMemberName(member: WorkspaceMember) {
+  return member.user?.name || member.invitedName || "Pending invite";
+}
+
+function getMemberEmail(member: WorkspaceMember) {
+  return member.user?.email || member.invitedEmail;
 }
 
 function getWorkspaceInitials(name: string) {

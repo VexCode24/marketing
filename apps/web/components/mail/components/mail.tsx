@@ -80,6 +80,18 @@ interface WorkspaceResponse {
   workspaces: {
     id: string;
     name: string;
+    members: {
+      id: string;
+      role: "OWNER" | "ADMIN" | "USER";
+      invitedName: string | null;
+      invitedEmail: string | null;
+      user: {
+        id: string;
+        name: string | null;
+        email: string | null;
+        image: string | null;
+      } | null;
+    }[];
     emailAccounts: {
       id: string;
       name: string;
@@ -143,6 +155,11 @@ export function Mail({
   const [workspaceName, setWorkspaceName] = React.useState("");
   const [emailAccountName, setEmailAccountName] = React.useState("");
   const [emailAccountEmail, setEmailAccountEmail] = React.useState("");
+  const [invitedMemberName, setInvitedMemberName] = React.useState("");
+  const [invitedMemberEmail, setInvitedMemberEmail] = React.useState("");
+  const [invitedMemberRole, setInvitedMemberRole] = React.useState<
+    "ADMIN" | "USER"
+  >("USER");
   const [workspaceError, setWorkspaceError] = React.useState<string | null>(
     null,
   );
@@ -339,6 +356,51 @@ export function Mail({
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div className="flex flex-col space-y-2">
+                  <Label>Invite name</Label>
+                  <Input
+                    type="text"
+                    name="invitedMemberName"
+                    placeholder="Alex Morgan"
+                    value={invitedMemberName}
+                    onChange={(event) => {
+                      setInvitedMemberName(event.target.value);
+                      setWorkspaceError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label>Invite email</Label>
+                  <Input
+                    type="email"
+                    name="invitedMemberEmail"
+                    placeholder="alex@example.com"
+                    value={invitedMemberEmail}
+                    onChange={(event) => {
+                      setInvitedMemberEmail(event.target.value);
+                      setWorkspaceError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label>Role</Label>
+                  <select
+                    name="invitedMemberRole"
+                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={invitedMemberRole}
+                    onChange={(event) => {
+                      setInvitedMemberRole(
+                        event.target.value as "ADMIN" | "USER",
+                      );
+                      setWorkspaceError(null);
+                    }}
+                  >
+                    <option value="USER">User</option>
+                    <option value="ADMIN">Admin</option>
+                  </select>
+                </div>
+              </div>
               {workspaceError ? (
                 <DialogDescription className="text-sm text-red-500">
                   {workspaceError}
@@ -363,6 +425,8 @@ export function Mail({
 
                     const accountName = emailAccountName.trim();
                     const accountEmail = emailAccountEmail.trim();
+                    const inviteName = invitedMemberName.trim();
+                    const inviteEmail = invitedMemberEmail.trim();
                     if (accountName && !accountEmail) {
                       setWorkspaceError("Email account address is required.");
                       return;
@@ -372,6 +436,17 @@ export function Mail({
                       !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)
                     ) {
                       setWorkspaceError("Enter a valid email account address.");
+                      return;
+                    }
+                    if (inviteName && !inviteEmail) {
+                      setWorkspaceError("Invite email address is required.");
+                      return;
+                    }
+                    if (
+                      inviteEmail &&
+                      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail)
+                    ) {
+                      setWorkspaceError("Enter a valid invite email address.");
                       return;
                     }
 
@@ -404,6 +479,15 @@ export function Mail({
                               },
                             ]
                           : undefined,
+                        invitedMembers: inviteEmail
+                          ? [
+                              {
+                                name: inviteName || undefined,
+                                email: inviteEmail,
+                                role: invitedMemberRole,
+                              },
+                            ]
+                          : undefined,
                       }),
                     });
 
@@ -417,6 +501,9 @@ export function Mail({
                     setWorkspaceName("");
                     setEmailAccountName("");
                     setEmailAccountEmail("");
+                    setInvitedMemberName("");
+                    setInvitedMemberEmail("");
+                    setInvitedMemberRole("USER");
                     setFile(undefined);
                     setIsUploading(false);
                     setCreateWorkspaceOpen(false);

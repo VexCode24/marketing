@@ -6,6 +6,16 @@ import { z } from "zod";
 const createWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(80),
   image: z.string().url().optional().nullable(),
+  invitedMembers: z
+    .array(
+      z.object({
+        name: z.string().trim().max(80).optional(),
+        email: z.string().trim().email().max(255),
+        role: z.enum(["ADMIN", "USER"]).default("USER"),
+      }),
+    )
+    .max(10)
+    .optional(),
   emailAccounts: z
     .array(
       z.object({
@@ -29,6 +39,23 @@ export async function GET() {
     include: {
       organization: {
         include: {
+          membership: {
+            select: {
+              id: true,
+              role: true,
+              invitedName: true,
+              invitedEmail: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  image: true,
+                },
+              },
+            },
+            orderBy: { id: "asc" },
+          },
           emailAccounts: {
             select: {
               id: true,
@@ -49,6 +76,7 @@ export async function GET() {
       name: membership.organization.name,
       image: membership.organization.image,
       role: membership.role,
+      members: membership.organization.membership,
       emailAccounts: membership.organization.emailAccounts,
     })),
   });
@@ -82,13 +110,36 @@ export async function POST(request: Request) {
           }
         : undefined,
       membership: {
-        create: {
-          role: "OWNER",
-          userId: session.user.id,
-        },
+        create: [
+          {
+            role: "OWNER",
+            userId: session.user.id,
+          },
+          ...(parsed.data.invitedMembers ?? []).map((invitedMember) => ({
+            role: invitedMember.role,
+            invitedName: invitedMember.name || null,
+            invitedEmail: invitedMember.email,
+          })),
+        ],
       },
     },
     include: {
+      membership: {
+        select: {
+          id: true,
+          role: true,
+          invitedName: true,
+          invitedEmail: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+            },
+          },
+        },
+      },
       emailAccounts: {
         select: {
           id: true,
@@ -106,6 +157,7 @@ export async function POST(request: Request) {
         name: workspace.name,
         image: workspace.image,
         role: "OWNER",
+        members: workspace.membership,
         emailAccounts: workspace.emailAccounts,
       },
     },

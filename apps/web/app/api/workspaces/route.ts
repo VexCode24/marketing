@@ -10,20 +10,41 @@ const createWorkspaceSchema = z.object({
     .array(
       z.object({
         name: z.string().trim().max(80).optional(),
-        email: z.string().trim().email().max(255),
+        email: z
+          .string()
+          .trim()
+          .email()
+          .max(255)
+          .transform((email) => email.toLowerCase()),
         role: z.enum(["ADMIN", "USER"]).default("USER"),
       }),
     )
     .max(10)
+    .refine(
+      (members) =>
+        new Set(members.map((member) => member.email)).size === members.length,
+      "Invited members must have unique email addresses",
+    )
     .optional(),
   emailAccounts: z
     .array(
       z.object({
         name: z.string().trim().min(1).max(80),
-        email: z.string().trim().email().max(255),
+        email: z
+          .string()
+          .trim()
+          .email()
+          .max(255)
+          .transform((email) => email.toLowerCase()),
       }),
     )
     .max(10)
+    .refine(
+      (accounts) =>
+        new Set(accounts.map((account) => account.email)).size ===
+        accounts.length,
+      "Email accounts must have unique email addresses",
+    )
     .optional(),
 });
 

@@ -5,7 +5,12 @@ import { z } from "zod";
 
 const inviteMemberSchema = z.object({
   name: z.string().trim().max(80).optional(),
-  email: z.string().trim().email().max(255),
+  email: z
+    .string()
+    .trim()
+    .email()
+    .max(255)
+    .transform((email) => email.toLowerCase()),
   role: z.enum(["ADMIN", "USER"]).default("USER"),
 });
 

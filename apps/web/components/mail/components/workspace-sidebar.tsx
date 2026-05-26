@@ -69,6 +69,11 @@ type EmailAccountDraft = {
   email: string;
 };
 
+type WorkspaceDraft = {
+  name: string;
+  image: string;
+};
+
 type MemberDraft = {
   name: string;
   email: string;
@@ -104,6 +109,12 @@ export function WorkspaceSidebar() {
   >(null);
   const [isSavingEmailAccount, setIsSavingEmailAccount] =
     React.useState(false);
+  const [workspaceDraft, setWorkspaceDraft] =
+    React.useState<WorkspaceDraft>({ name: "", image: "" });
+  const [workspaceError, setWorkspaceError] = React.useState<string | null>(
+    null,
+  );
+  const [isSavingWorkspace, setIsSavingWorkspace] = React.useState(false);
   const [memberDraft, setMemberDraft] = React.useState<MemberDraft>({
     name: "",
     email: "",
@@ -134,6 +145,10 @@ export function WorkspaceSidebar() {
         ]),
       ),
     );
+    setWorkspaceDraft({
+      name: managingWorkspace.name,
+      image: managingWorkspace.image ?? "",
+    });
     setEditingMembers(
       Object.fromEntries(
         managingWorkspace.members.map((member) => [
@@ -146,9 +161,47 @@ export function WorkspaceSidebar() {
     );
     setEmailAccountDraft({ name: "", email: "" });
     setMemberDraft({ name: "", email: "", role: "USER" });
+    setWorkspaceError(null);
     setEmailAccountError(null);
     setMemberError(null);
   }, [managingWorkspace]);
+
+  const updateWorkspace = async () => {
+    if (!managingWorkspace) {
+      return;
+    }
+
+    const name = workspaceDraft.name.trim();
+    const image = workspaceDraft.image.trim();
+    if (!name) {
+      setWorkspaceError("Workspace name is required.");
+      return;
+    }
+    if (image) {
+      try {
+        new URL(image);
+      } catch {
+        setWorkspaceError("Enter a valid workspace image URL.");
+        return;
+      }
+    }
+
+    setIsSavingWorkspace(true);
+    setWorkspaceError(null);
+    const response = await fetch(`/api/workspaces/${managingWorkspace.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, image: image || null }),
+    });
+    setIsSavingWorkspace(false);
+
+    if (!response.ok) {
+      setWorkspaceError("Could not update workspace details.");
+      return;
+    }
+
+    await mutate();
+  };
 
   const addEmailAccount = async () => {
     if (!managingWorkspace) {
@@ -487,6 +540,57 @@ export function WorkspaceSidebar() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Building2 className="h-4 w-4" />
+                <DialogDescription>Workspace details</DialogDescription>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                <div className="flex flex-col space-y-2">
+                  <Label>Name</Label>
+                  <Input
+                    value={workspaceDraft.name}
+                    onChange={(event) => {
+                      setWorkspaceDraft((draft) => ({
+                        ...draft,
+                        name: event.target.value,
+                      }));
+                      setWorkspaceError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <Label>Logo URL</Label>
+                  <Input
+                    placeholder="https://example.com/logo.png"
+                    value={workspaceDraft.image}
+                    onChange={(event) => {
+                      setWorkspaceDraft((draft) => ({
+                        ...draft,
+                        image: event.target.value,
+                      }));
+                      setWorkspaceError(null);
+                    }}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    disabled={isSavingWorkspace}
+                    onClick={updateWorkspace}
+                  >
+                    <Save className="h-4 w-4" />
+                    <span className="sr-only">Save workspace details</span>
+                  </Button>
+                </div>
+              </div>
+              {workspaceError ? (
+                <DialogDescription className="text-red-500">
+                  {workspaceError}
+                </DialogDescription>
+              ) : null}
+            </div>
             <div className="space-y-3">
               <div className="flex items-center space-x-2">
                 <UserPlus className="h-4 w-4" />

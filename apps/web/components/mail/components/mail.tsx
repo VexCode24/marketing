@@ -100,6 +100,17 @@ interface WorkspaceResponse {
   }[];
 }
 
+type WorkspaceEmailAccountDraft = {
+  name: string;
+  email: string;
+};
+
+type InvitedMemberDraft = {
+  name: string;
+  email: string;
+  role: "ADMIN" | "USER";
+};
+
 export function Mail({
   accounts,
   defaultLayout = [225, 440, 655],
@@ -153,13 +164,12 @@ export function Mail({
   const [file, setFile] = React.useState<File | undefined>();
   const [isUploading, setIsUploading] = React.useState(false);
   const [workspaceName, setWorkspaceName] = React.useState("");
-  const [emailAccountName, setEmailAccountName] = React.useState("");
-  const [emailAccountEmail, setEmailAccountEmail] = React.useState("");
-  const [invitedMemberName, setInvitedMemberName] = React.useState("");
-  const [invitedMemberEmail, setInvitedMemberEmail] = React.useState("");
-  const [invitedMemberRole, setInvitedMemberRole] = React.useState<
-    "ADMIN" | "USER"
-  >("USER");
+  const [emailAccountDrafts, setEmailAccountDrafts] = React.useState<
+    WorkspaceEmailAccountDraft[]
+  >([{ name: "", email: "" }]);
+  const [invitedMemberDrafts, setInvitedMemberDrafts] = React.useState<
+    InvitedMemberDraft[]
+  >([{ name: "", email: "", role: "USER" }]);
   const [workspaceError, setWorkspaceError] = React.useState<string | null>(
     null,
   );
@@ -186,6 +196,28 @@ export function Mail({
   const visibleAccounts = workspaceAccounts.length
     ? workspaceAccounts
     : accounts;
+  const updateEmailAccountDraft = (
+    index: number,
+    updates: Partial<WorkspaceEmailAccountDraft>,
+  ) => {
+    setEmailAccountDrafts((drafts) =>
+      drafts.map((draft, draftIndex) =>
+        draftIndex === index ? { ...draft, ...updates } : draft,
+      ),
+    );
+    setWorkspaceError(null);
+  };
+  const updateInvitedMemberDraft = (
+    index: number,
+    updates: Partial<InvitedMemberDraft>,
+  ) => {
+    setInvitedMemberDrafts((drafts) =>
+      drafts.map((draft, draftIndex) =>
+        draftIndex === index ? { ...draft, ...updates } : draft,
+      ),
+    );
+    setWorkspaceError(null);
+  };
 
   React.useEffect(() => {
     if (threadsData) {
@@ -299,7 +331,7 @@ export function Mail({
           open={createWorkspaceOpen}
           onOpenChange={setCreateWorkspaceOpen}
         >
-          <DialogContent className="sm:max-w-[625px]">
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[625px]">
             <DialogHeader>
               <DialogTitle className="pb-2 font-cal text-xl font-bold">
                 Create Workspace
@@ -328,78 +360,159 @@ export function Mail({
                   }}
                 />
               </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col space-y-2">
-                  <Label>Email account name</Label>
-                  <Input
-                    type="text"
-                    name="emailAccountName"
-                    placeholder="Shared inbox"
-                    value={emailAccountName}
-                    onChange={(event) => {
-                      setEmailAccountName(event.target.value);
-                      setWorkspaceError(null);
-                    }}
-                  />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <Label>Email account address</Label>
-                  <Input
-                    type="email"
-                    name="emailAccountEmail"
-                    placeholder="team@example.com"
-                    value={emailAccountEmail}
-                    onChange={(event) => {
-                      setEmailAccountEmail(event.target.value);
-                      setWorkspaceError(null);
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="flex flex-col space-y-2">
-                  <Label>Invite name</Label>
-                  <Input
-                    type="text"
-                    name="invitedMemberName"
-                    placeholder="Alex Morgan"
-                    value={invitedMemberName}
-                    onChange={(event) => {
-                      setInvitedMemberName(event.target.value);
-                      setWorkspaceError(null);
-                    }}
-                  />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <Label>Invite email</Label>
-                  <Input
-                    type="email"
-                    name="invitedMemberEmail"
-                    placeholder="alex@example.com"
-                    value={invitedMemberEmail}
-                    onChange={(event) => {
-                      setInvitedMemberEmail(event.target.value);
-                      setWorkspaceError(null);
-                    }}
-                  />
-                </div>
-                <div className="flex flex-col space-y-2">
-                  <Label>Role</Label>
-                  <select
-                    name="invitedMemberRole"
-                    className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    value={invitedMemberRole}
-                    onChange={(event) => {
-                      setInvitedMemberRole(
-                        event.target.value as "ADMIN" | "USER",
-                      );
-                      setWorkspaceError(null);
-                    }}
+              <div className="space-y-3">
+                {emailAccountDrafts.map((emailAccount, index) => (
+                  <div
+                    key={`email-account-${index}`}
+                    className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_auto]"
                   >
-                    <option value="USER">User</option>
-                    <option value="ADMIN">Admin</option>
-                  </select>
-                </div>
+                    <div className="flex flex-col space-y-2">
+                      <Label>Email account name</Label>
+                      <Input
+                        type="text"
+                        name={`emailAccountName-${index}`}
+                        placeholder="Shared inbox"
+                        value={emailAccount.name}
+                        onChange={(event) =>
+                          updateEmailAccountDraft(index, {
+                            name: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col space-y-2">
+                      <Label>Email account address</Label>
+                      <Input
+                        type="email"
+                        name={`emailAccountEmail-${index}`}
+                        placeholder="team@example.com"
+                        value={emailAccount.email}
+                        onChange={(event) =>
+                          updateEmailAccountDraft(index, {
+                            email: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        onClick={() => {
+                          setEmailAccountDrafts((drafts) =>
+                            drafts.length === 1
+                              ? [{ name: "", email: "" }]
+                              : drafts.filter(
+                                  (_draft, draftIndex) => draftIndex !== index,
+                                ),
+                          );
+                          setWorkspaceError(null);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Remove email account</span>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    setEmailAccountDrafts((drafts) => [
+                      ...drafts,
+                      { name: "", email: "" },
+                    ])
+                  }
+                  disabled={emailAccountDrafts.length >= 10}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add email account
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {invitedMemberDrafts.map((invitedMember, index) => (
+                  <div
+                    key={`invited-member-${index}`}
+                    className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_1fr_120px_auto]"
+                  >
+                    <div className="flex flex-col space-y-2">
+                      <Label>Invite name</Label>
+                      <Input
+                        type="text"
+                        name={`invitedMemberName-${index}`}
+                        placeholder="Alex Morgan"
+                        value={invitedMember.name}
+                        onChange={(event) =>
+                          updateInvitedMemberDraft(index, {
+                            name: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col space-y-2">
+                      <Label>Invite email</Label>
+                      <Input
+                        type="email"
+                        name={`invitedMemberEmail-${index}`}
+                        placeholder="alex@example.com"
+                        value={invitedMember.email}
+                        onChange={(event) =>
+                          updateInvitedMemberDraft(index, {
+                            email: event.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col space-y-2">
+                      <Label>Role</Label>
+                      <select
+                        name={`invitedMemberRole-${index}`}
+                        className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        value={invitedMember.role}
+                        onChange={(event) =>
+                          updateInvitedMemberDraft(index, {
+                            role: event.target.value as "ADMIN" | "USER",
+                          })
+                        }
+                      >
+                        <option value="USER">User</option>
+                        <option value="ADMIN">Admin</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        size="icon"
+                        variant="secondary"
+                        onClick={() => {
+                          setInvitedMemberDrafts((drafts) =>
+                            drafts.length === 1
+                              ? [{ name: "", email: "", role: "USER" }]
+                              : drafts.filter(
+                                  (_draft, draftIndex) => draftIndex !== index,
+                                ),
+                          );
+                          setWorkspaceError(null);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Remove invite</span>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    setInvitedMemberDrafts((drafts) => [
+                      ...drafts,
+                      { name: "", email: "", role: "USER" },
+                    ])
+                  }
+                  disabled={invitedMemberDrafts.length >= 10}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add invite
+                </Button>
               </div>
               {workspaceError ? (
                 <DialogDescription className="text-sm text-red-500">
@@ -423,30 +536,82 @@ export function Mail({
                       return;
                     }
 
-                    const accountName = emailAccountName.trim();
-                    const accountEmail = emailAccountEmail.trim();
-                    const inviteName = invitedMemberName.trim();
-                    const inviteEmail = invitedMemberEmail.trim();
-                    if (accountName && !accountEmail) {
+                    const emailAccounts = emailAccountDrafts
+                      .map((emailAccount) => ({
+                        name: emailAccount.name.trim(),
+                        email: emailAccount.email.trim(),
+                      }))
+                      .filter(
+                        (emailAccount) =>
+                          emailAccount.name || emailAccount.email,
+                      );
+                    const invitedMembers = invitedMemberDrafts
+                      .map((invitedMember) => ({
+                        name: invitedMember.name.trim(),
+                        email: invitedMember.email.trim(),
+                        role: invitedMember.role,
+                      }))
+                      .filter(
+                        (invitedMember) =>
+                          invitedMember.name || invitedMember.email,
+                      );
+
+                    if (
+                      emailAccounts.some(
+                        (emailAccount) => !emailAccount.email,
+                      )
+                    ) {
                       setWorkspaceError("Email account address is required.");
                       return;
                     }
                     if (
-                      accountEmail &&
-                      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)
+                      emailAccounts.some(
+                        (emailAccount) =>
+                          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+                            emailAccount.email,
+                          ),
+                      )
                     ) {
-                      setWorkspaceError("Enter a valid email account address.");
+                      setWorkspaceError("Enter valid email account addresses.");
                       return;
                     }
-                    if (inviteName && !inviteEmail) {
+                    if (
+                      new Set(
+                        emailAccounts.map((emailAccount) =>
+                          emailAccount.email.toLowerCase(),
+                        ),
+                      ).size !== emailAccounts.length
+                    ) {
+                      setWorkspaceError("Email account addresses must be unique.");
+                      return;
+                    }
+                    if (
+                      invitedMembers.some(
+                        (invitedMember) => !invitedMember.email,
+                      )
+                    ) {
                       setWorkspaceError("Invite email address is required.");
                       return;
                     }
                     if (
-                      inviteEmail &&
-                      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteEmail)
+                      invitedMembers.some(
+                        (invitedMember) =>
+                          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+                            invitedMember.email,
+                          ),
+                      )
                     ) {
-                      setWorkspaceError("Enter a valid invite email address.");
+                      setWorkspaceError("Enter valid invite email addresses.");
+                      return;
+                    }
+                    if (
+                      new Set(
+                        invitedMembers.map((invitedMember) =>
+                          invitedMember.email.toLowerCase(),
+                        ),
+                      ).size !== invitedMembers.length
+                    ) {
+                      setWorkspaceError("Invite email addresses must be unique.");
                       return;
                     }
 
@@ -471,22 +636,18 @@ export function Mail({
                       body: JSON.stringify({
                         name,
                         image,
-                        emailAccounts: accountEmail
-                          ? [
-                              {
-                                name: accountName || accountEmail,
-                                email: accountEmail,
-                              },
-                            ]
+                        emailAccounts: emailAccounts.length
+                          ? emailAccounts.map((emailAccount) => ({
+                              name: emailAccount.name || emailAccount.email,
+                              email: emailAccount.email,
+                            }))
                           : undefined,
-                        invitedMembers: inviteEmail
-                          ? [
-                              {
-                                name: inviteName || undefined,
-                                email: inviteEmail,
-                                role: invitedMemberRole,
-                              },
-                            ]
+                        invitedMembers: invitedMembers.length
+                          ? invitedMembers.map((invitedMember) => ({
+                              name: invitedMember.name || undefined,
+                              email: invitedMember.email,
+                              role: invitedMember.role,
+                            }))
                           : undefined,
                       }),
                     });
@@ -499,11 +660,10 @@ export function Mail({
 
                     await mutate("/api/workspaces");
                     setWorkspaceName("");
-                    setEmailAccountName("");
-                    setEmailAccountEmail("");
-                    setInvitedMemberName("");
-                    setInvitedMemberEmail("");
-                    setInvitedMemberRole("USER");
+                    setEmailAccountDrafts([{ name: "", email: "" }]);
+                    setInvitedMemberDrafts([
+                      { name: "", email: "", role: "USER" },
+                    ]);
                     setFile(undefined);
                     setIsUploading(false);
                     setCreateWorkspaceOpen(false);
